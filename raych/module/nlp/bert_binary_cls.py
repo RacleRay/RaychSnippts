@@ -17,7 +17,6 @@ class BERTBaseUncased(raych.Model):
         self.linear = nn.Linear(768, 1)
         self.step_scheduler_after = "batch"
 
-        self.lr = kwargs['lr']
         self.num_warmup_steps = kwargs['num_warmup_steps']
         self.num_train_steps = kwargs['num_train_steps']
 

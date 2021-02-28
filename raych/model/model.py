@@ -76,7 +76,9 @@ class Model(nn.Module):
             k_best=3,
             enable_bestone=True,
             best_metric="loss",
-            reload_model=""):
+            reload_model="",
+            learn_rate=0.01,
+            is_dataloader=False):
         """模型主训练逻辑
 
         Args:
@@ -109,6 +111,9 @@ class Model(nn.Module):
             best_metric (str, optional): 最好模型的 评价基准，默认 loss, 可设置为在 monitor_metrics 方法中自定义的名称. 
                 Defaults to loss.
             reload_model (str, optional): 加载 reload_model 路径的 checkpoint 文件继续训练. Defaults to "".
+            learn_rate (float, optional): 学习率. Defaults to 0.01.
+            is_dataloader (bool, optional): 输入的 train_dataset，valid_dataset 是否已经是 DataLoader 对象. 
+                Defaults to False.
         """
         self._init_model(device=device,
                          train_dataset=train_dataset,
@@ -126,7 +131,9 @@ class Model(nn.Module):
                          enable_fgm=enable_fgm,
                          fgm_epsilon=fgm_epsilon,
                          emb_prefix=emb_prefix,
-                         reload_model=reload_model)
+                         reload_model=reload_model,
+                         learn_rate=learn_rate,
+                         is_dataloader=is_dataloader)
 
         for _ in range(epochs):
             self.epoch += 1
@@ -313,7 +320,9 @@ class Model(nn.Module):
                     enable_fgm=False,
                     fgm_epsilon=1.0,
                     emb_prefix='emb',
-                    reload_model=""):
+                    reload_model="",
+                    learn_rate=0.01,
+                    is_dataloader=False):
 
         create_dir('./weights')
 
@@ -338,7 +347,8 @@ class Model(nn.Module):
         if next(self.parameters()).device != self.device:
             self.to(self.device)
 
-        if self.train_loader is None:
+        # 输入是 Dataset 对象
+        if self.train_loader is None and not is_dataloader:
             self.train_loader = torch.utils.data.DataLoader(
                 train_dataset,
                 batch_size=train_bs,
@@ -348,7 +358,7 @@ class Model(nn.Module):
                 collate_fn=train_collate_fn,
             )
             self.total_train_step_epoch = len(self.train_loader)
-        if self.valid_loader is None:
+        if self.valid_loader is None and not is_dataloader:
             if valid_dataset is not None:
                 self.valid_loader = torch.utils.data.DataLoader(
                     valid_dataset,
@@ -360,6 +370,15 @@ class Model(nn.Module):
                 )
                 self.total_valid_step_epoch = len(self.valid_loader)
 
+        # 输入是 DataLoader 对象
+        if is_dataloader and self.train_loader is None:
+            self.train_loader = train_dataset
+        if is_dataloader and self.valid_loader is None:
+            if valid_dataset is not None:
+                self.valid_loader = valid_dataset
+                self.total_valid_step_epoch = len(self.valid_loader)
+
+        self.lr = learn_rate
         if self.optimizer is None:
             self.optimizer = self.custom_optimizer()
 
@@ -508,10 +527,10 @@ class Model(nn.Module):
                 dataset,
                 batch_size=16,
                 n_jobs=1):
-        """预测函数
+        """预测函数。直接写一个处理单个输入的 predict 方法比这个简单，需要时可以重写
 
         Args:
-            dataset (Dataset): 预测输入Dataset对象
+            dataset (Iterable): 可产生预测输入可迭代对象，格式和训练阶段保持一致，符合forward方法的输入参数
             batch_size (int, optional): batch size. Defaults to 16.
             n_jobs (int, optional): 处理数据loader时，并行处理任务数. Defaults to 1.
 
@@ -669,5 +688,5 @@ class Model(nn.Module):
 
     def custom_scheduler(self, *args, **kwargs):
         "定义学习率调节方法"
-        raise NotImplementedError(
-            "custom_scheduler method is not implemented !")
+        logger.info("[Config] custom scheduler is not used")
+        return None

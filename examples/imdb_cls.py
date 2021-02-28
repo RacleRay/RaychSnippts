@@ -36,7 +36,8 @@ def main():
     prepare_seed(randseed)
 
     # data ###################################################
-    raw_data = pd.read_csv("/tmp/aclImdb_v1.tar/aclImdb/imbd.csv", names=['review', 'sentiment']).fillna(" ")
+    raw_data = pd.read_csv("/tmp/aclImdb_v1.tar/aclImdb/imbd.csv", 
+                           names=['review', 'sentiment']).fillna(" ")
     print(raw_data.head(5))
     df_train, df_valid = model_selection.train_test_split(
         raw_data,
@@ -61,10 +62,9 @@ def main():
 
     # Model ###################################################
     n_train_steps = int(len(df_train) / batch_size * epochs)
-    model = BERTBaseUncased(lr=lr,
-                            num_train_steps=n_train_steps,
+    model = BERTBaseUncased(num_train_steps=n_train_steps,
                             num_warmup_steps=warmup_steps)
-    # model.load("model.bin")
+
     tf_callback = raych.callbacks.TensorBoardLogger(log_dir=".logs/")
     earlystop = raych.callbacks.EarlyStopping(
         monitor="valid_loss", model_path="./weights/model_early_stop.bin")
@@ -94,6 +94,7 @@ def main():
         fp16=True,
         best_metric='accuracy',
         enable_fgm=False,
+        learn_rate=3e-5
     )
 
     # 选择使用 FGM
@@ -104,6 +105,7 @@ def main():
     #     device=device,
     #     epochs=epochs,
     #     callbacks=[tf_callback, earlystop],
+    #     learn_rate=3e-5,
     #     fp16=True,
     #     best_metric='accuracy',
     #     enable_fgm=True,

@@ -8,7 +8,7 @@ class BERTBinaryClsDa:
 
         Arguments:
             text {Iterable[str]} -- 储存文本数据的容器对象
-            target {Iterable[int]} -- 储存标签的容器对象
+            target {Iterable[int]} -- 储存标签的容器对象，不输入取None
 
         Keyword Arguments:
             tokenizer_name {str} -- tokenizer name，可输入自行下载的预训练模型配套的文件路径
