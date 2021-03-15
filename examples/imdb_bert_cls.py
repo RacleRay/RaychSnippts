@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import raych
 from sklearn import model_selection
-from raych.module.nlp.bert_binary_cls import BERTBaseUncased
+from raych.models.nlp.bert_binary_cls import BERTBaseUncased
 from raych.datamanager.bertdata import BERTBinaryClsDa
 from raych.util.info import get_machine_info, filter_warnings
 from raych.util.randseed import prepare_seed

@@ -5,9 +5,10 @@ import transformers
 import raych
 from sklearn import metrics
 from transformers import AdamW, get_linear_schedule_with_warmup
+from overrides import overrides
 
 
-class BERTBaseUncased(raych.Model):
+class BERTBaseUncased(raych.Pipeline):
     def __init__(self, *args, **kwargs):
         super(BERTBaseUncased, self).__init__()
         self.bert = transformers.BertModel.from_pretrained(
@@ -20,11 +21,13 @@ class BERTBaseUncased(raych.Model):
         self.num_warmup_steps = kwargs['num_warmup_steps']
         self.num_train_steps = kwargs['num_train_steps']
 
+    @overrides
     def compute_loss(self, outputs, targets):
         if targets is None:
             return None
         return nn.BCEWithLogitsLoss()(outputs, targets.reshape(-1, 1))
 
+    @overrides
     def forward(self, ids, mask, token_type_ids, targets=None):
         last_hidden_state, pooler_output = self.bert(
             ids, attention_mask=mask, token_type_ids=token_type_ids)
@@ -34,6 +37,7 @@ class BERTBaseUncased(raych.Model):
         acc = self.monitor_metrics(out, targets)
         return out, loss, acc
 
+    @overrides
     def monitor_metrics(self, outputs, targets):
         if targets is None:
             return {}
@@ -42,6 +46,7 @@ class BERTBaseUncased(raych.Model):
         accuracy = metrics.accuracy_score(targets, outputs)
         return {"accuracy": accuracy}
 
+    @overrides
     def custom_optimizer(self):
         param_optimizer = list(self.named_parameters())
         no_decay = ["bias", "LayerNorm.bias"]
@@ -58,6 +63,7 @@ class BERTBaseUncased(raych.Model):
         opt = AdamW(optimizer_parameters, lr=self.lr)
         return opt
 
+    @overrides
     def custom_scheduler(self):
         scheduler = get_linear_schedule_with_warmup(
             self.optimizer,

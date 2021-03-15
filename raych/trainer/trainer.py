@@ -12,9 +12,28 @@ from raych.util.tools import create_dir, remove_file
 from raych.util.heap import Heap, CheckpointStruct
 
 
-class Model(nn.Module):
+class Pipeline(nn.Module):
+    """
+    模型训练流程逻辑：
+        1. self._init_model()
+            - process datasets
+            - self.custom_optimizer()     # Need implementation
+            - self.custom_scheduler()     # Need implementation
+            - set callbacks
+        2. train_one_epoch, in each step:
+            - self.model_fn()             # (Optional)Need implementation: output, loss, metrics
+            - self.forward()              # Need implementation
+                - self.compute_loss()     # Need implementation
+                - self.monitor_metrics()  # Need implementation
+        3. validate_one_epoch:
+            - self.model_fn()
+            - self.forward()
+
+    设置模型 model_state 时，都会检查调用 callback
+    选择使用 Pipeline.find_lr().
+    """
     def __init__(self, *args, **kwargs):
-        super(Model, self).__init__(*args, **kwargs)
+        super(Pipeline, self).__init__(*args, **kwargs)
         # device
         self.device = None
 
@@ -190,6 +209,45 @@ class Model(nn.Module):
 
         self.train_state = TrainingState.TRAIN_END
 
+    #############################################################
+    ################## 以下函数需要在使用时自定义 ##################
+
+    def forward(self, *args, **kwargs):
+        return super().forward(*args, **kwargs)
+
+    def model_fn(self, data):
+        "前向计算，有需要时重新定义"
+        for key, value in data.items():
+            data[key] = value.to(self.device)
+        if self.fp16:
+            with torch.cuda.amp.autocast():
+                output, loss, metrics = self(**data)
+        else:
+            output, loss, metrics = self(**data)
+        return output, loss, metrics
+
+    def monitor_metrics(self, *args, **kwargs):
+        "计算评价指标的方法"
+        raise NotImplementedError(
+            "monitor_metrics method is not implemented !")
+
+    def compute_loss(self, *args, **kwargs):
+        "定义损失函数计算的方法，在 forward 中使用"
+        raise NotImplementedError("get_loss method is not implemented !")
+
+    def custom_optimizer(self, *args, **kwargs):
+        "定义优化器"
+        raise NotImplementedError(
+            "custom_optimizer method is not implemented !")
+
+    def custom_scheduler(self, *args, **kwargs):
+        "定义学习率调节方法"
+        logger.info("[Config] custom scheduler is not used")
+        return None
+
+    #############################################################
+    #############################################################
+
     def find_lr(self,
                 train_dataset,
                 init_value=1e-8,
@@ -205,7 +263,6 @@ class Model(nn.Module):
                 callbacks=None,
                 fp16=False,
                 train_collate_fn=None,
-                valid_collate_fn=None,
                 save_img_name="find_lr.png"):
         """简易最佳学习率寻找方法，找到loss下降最快的lr，设置为初始学习，可以逐步缩小搜索范围
 
@@ -226,7 +283,6 @@ class Model(nn.Module):
             callbacks (List[Callbacks], optional): 自定义的 callback 对象list. Defaults to None.
             fp16 (bool, optional): 半精度训练. Defaults to False.
             train_collate_fn (callable, optional): 从 字典 形式的输入数据集中，采样出一个batch数据的函数. Defaults to None.
-            valid_collate_fn (callable, optional): 从 字典 形式的输入数据集中，采样出一个batch数据的函数. Defaults to None.
         Returns:
             (list, list): (学习率列表，对应损失列表)
         """
@@ -329,7 +385,7 @@ class Model(nn.Module):
         # init record heap
         self.best_scores = Heap([CheckpointStruct(-1, "")])
         self.pre_best_path = ""
-        
+
         if callbacks is None:
             callbacks = list()
 
@@ -408,7 +464,7 @@ class Model(nn.Module):
         for b_idx, data in enumerate(tqdm_loader):
             # trian step
             self.train_state = TrainingState.TRAIN_STEP_START
-            _, self.step_loss, metrics = self.train_one_step(data)
+            _, self.step_loss, metrics = self._train_one_step(data)
             self.train_state = TrainingState.TRAIN_STEP_END
             losses.update(self.step_loss.item())
 
@@ -432,7 +488,7 @@ class Model(nn.Module):
 
         return losses.avg
 
-    def train_one_step(self, data):
+    def _train_one_step(self, data):
         self.optimizer.zero_grad()
         # forward
         output, loss, metrics = self.model_fn(data)
@@ -453,20 +509,20 @@ class Model(nn.Module):
                 if self.fp16:
                     with torch.cuda.amp.autocast():
                         self.scaler.scale(loss).backward()
-                    self.attack()
+                    self._attack()
                     _, loss_adv, _ = self.model_fn(data)
                     with torch.cuda.amp.autocast():
                         self.scaler.scale(loss_adv).backward()
-                    self.restore()
+                    self._restore()
                     with torch.cuda.amp.autocast():
                         self.scaler.step(self.optimizer)
                         self.scaler.update()
                 else:
                     loss.backward()        # 反向传播，得到正常的grad
-                    self.attack()          # 在embedding上添加对抗扰动
+                    self._attack()          # 在embedding上添加对抗扰动
                     _, loss_adv, _ = self.model_fn(data)
                     loss_adv.backward()    # 反向传播，并在正常的grad基础上，累加对抗训练的梯度
-                    self.restore()         # 恢复embedding参数
+                    self._restore()         # 恢复embedding参数
                     self.optimizer.step()  # 梯度下降，更新参数
 
         # schedule
@@ -476,16 +532,6 @@ class Model(nn.Module):
 
         return output, loss, metrics
 
-    def model_fn(self, data):
-        "前向计算"
-        for key, value in data.items():
-            data[key] = value.to(self.device)
-        if self.fp16:
-            with torch.cuda.amp.autocast():
-                output, loss, metrics = self(**data)
-        else:
-            output, loss, metrics = self(**data)
-        return output, loss, metrics
 
     def validate_one_epoch(self, data_loader):
         self.eval()
@@ -497,7 +543,7 @@ class Model(nn.Module):
             # no backward
             self.train_state = TrainingState.VALID_STEP_START
             with torch.no_grad():
-                _, self.step_loss, metrics = self.validate_one_step(data)
+                _, self.step_loss, metrics = self._validate_one_step(data)
             self.train_state = TrainingState.VALID_STEP_END
             losses.update(self.step_loss.item())
 
@@ -518,7 +564,7 @@ class Model(nn.Module):
 
         return losses.avg
 
-    def validate_one_step(self, data):
+    def _validate_one_step(self, data):
         # forward only
         output, loss, metrics = self.model_fn(data)
         return output, loss, metrics
@@ -527,7 +573,7 @@ class Model(nn.Module):
                 dataset,
                 batch_size=16,
                 n_jobs=1):
-        """预测函数。直接写一个处理单个输入的 predict 方法比这个简单，需要时可以重写
+        """预测函数。需要时可以重写
 
         Args:
             dataset (Iterable): 可产生预测输入可迭代对象，格式和训练阶段保持一致，符合forward方法的输入参数
@@ -552,22 +598,22 @@ class Model(nn.Module):
         tqdm_loader = tqdm(data_loader, total=len(data_loader))
         for data in tqdm_loader:
             with torch.no_grad():
-                out = self.predict_one_step(data)
-                out = self.process_output(out)
+                out = self._predict_one_step(data)
+                out = self._process_output(out)
                 yield out
 
             tqdm_loader.set_postfix(stage="test")
         tqdm_loader.close()
 
-    def predict_one_step(self, data):
+    def _predict_one_step(self, data):
         output, _, _ = self.model_fn(data)
         return output
 
-    def process_output(self, output):
+    def _process_output(self, output):
         output = output.cpu().detach().numpy()
         return output
 
-    def attack(self):
+    def _attack(self):
         "用于NLP任务，对embedding层参数进行对抗训练，使用FGM算法"
         for name, param in self.named_parameters():
             if param.requires_grad and self.emb_name in name:
@@ -577,7 +623,7 @@ class Model(nn.Module):
                     r_adv = self.epsilon * param.grad / norm
                     param.data.add_(r_adv)
 
-    def restore(self):
+    def _restore(self):
         "用于NLP任务，对embedding层参数进行对抗训练，对抗训练参数更新后，恢复原embedding"
         for name, param in self.named_parameters():
             if param.requires_grad and self.emb_name in name:
@@ -668,25 +714,4 @@ class Model(nn.Module):
         if self.callback_runner is not None:
             self.callback_runner(value)
 
-    ######### 以下函数需要在使用时自定义 #########
-    def forward(self, *args, **kwargs):
-        return super().forward(*args, **kwargs)
 
-    def monitor_metrics(self, *args, **kwargs):
-        "计算评价指标的方法"
-        raise NotImplementedError(
-            "monitor_metrics method is not implemented !")
-
-    def get_loss(self, *args, **kwargs):
-        "定义损失函数计算的方法"
-        raise NotImplementedError("get_loss method is not implemented !")
-
-    def custom_optimizer(self, *args, **kwargs):
-        "定义优化器"
-        raise NotImplementedError(
-            "custom_optimizer method is not implemented !")
-
-    def custom_scheduler(self, *args, **kwargs):
-        "定义学习率调节方法"
-        logger.info("[Config] custom scheduler is not used")
-        return None

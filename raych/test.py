@@ -13,6 +13,9 @@ logger.info(get_machine_info())
 
 
 
+################################################################
+
+
 # import math
 
 # import matplotlib.pyplot as plt
@@ -20,3 +23,13 @@ logger.info(get_machine_info())
 # lr = [1e-8 + (10.0 - 1e-8) * (1 + math.cos(1 * math.pi * batch_num / 300)) / 2 for batch_num in range(1, 301)]
 # plt.plot(lr)
 # plt.savefig("test.png")
+
+
+# overrides
+# pip install overrides
+
+
+################################################################
+
+# https://github.com/arogozhnikov/einops
+# pip install einops

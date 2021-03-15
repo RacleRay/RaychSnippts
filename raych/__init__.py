@@ -1,4 +1,4 @@
-from .model import Model
+from .trainer import Pipeline
 from .callbacks import EarlyStopping
 from .callbacks import TensorBoardLogger
 from .datamanager import BERTBinaryClsDa

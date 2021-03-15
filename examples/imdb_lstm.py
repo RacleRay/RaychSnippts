@@ -5,9 +5,10 @@ from raych.datamanager.opendata import load_tt_data
 from raych.util.info import get_machine_info, filter_warnings
 from raych.util.randseed import prepare_seed
 from raych.util import logger
+from overrides import overrides
 
 
-class RNN(raych.Model):
+class RNN(raych.Pipeline):
     def __init__(self,
                  vocab_size,
                  embedding_dim,
@@ -32,6 +33,7 @@ class RNN(raych.Model):
         self.fc = nn.Linear(hidden_dim * 2, output_dim)
         self.dropout = nn.Dropout(dropout)
 
+    @overrides
     def forward(self, text, text_lengths, targets=None):
         # text = [sent len, batch size]
 
@@ -43,8 +45,7 @@ class RNN(raych.Model):
         # pack sequence, 使得 rnn 只处理 非pad 位置。且返回的 hidden and cell 是从最后一个 非pad 位置输出
         #                而不是从序列最后一个 pad 输出
         packed_sequence = nn.utils.rnn.pack_padded_sequence(embedded,
-                                                            text_lengths.to(
-                                                                'cpu'),
+                                                            text_lengths.to('cpu'),
                                                             batch_first=True)
         # hidden: [num layers * num directions, batch size, hid dim]
         # cell  : [num layers * num directions, batch size, hid dim]
@@ -67,6 +68,7 @@ class RNN(raych.Model):
 
         return out, loss, acc
 
+    @overrides
     def model_fn(self, data):
         "BucketIterator输入为Batch对象，需要重写model_fn, 原model_fn只处理字典输入"
         text, text_lengths = data.text
@@ -80,11 +82,13 @@ class RNN(raych.Model):
             out, loss, acc = self(text, text_lengths, label)
         return out, loss, acc
 
+    @overrides
     def compute_loss(self, outputs, targets):
         if targets is None:
             return None
         return nn.BCEWithLogitsLoss()(outputs, targets)
 
+    @overrides
     def monitor_metrics(self, outputs, targets):
         if targets is None:
             return {}
@@ -94,6 +98,7 @@ class RNN(raych.Model):
         acc = correct.sum() / len(correct)
         return {"accuracy": acc}
 
+    @overrides
     def custom_optimizer(self):
         param_optimizer=list(self.named_parameters())
         no_decay=["bias", "LayerNorm.bias"]
@@ -148,7 +153,7 @@ if __name__ == "__main__":
     tf_callback = raych.callbacks.TensorBoardLogger(log_dir=".logs/lstm/")
     earlystop = raych.callbacks.EarlyStopping(
         monitor="valid_loss", model_path="./weights/model_early_stop.bin")
-    
+
     model.fit(
         train_iter,
         valid_dataset=test_iter,

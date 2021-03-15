@@ -55,7 +55,7 @@ class CallbackRunner:
 
         Args:
             callbacks (List[Callback]): 包含Callback对象的列表
-            model (raych.Model): 继承自nn.Module的自定义Model对象
+            model (raych.Pipeline): 继承自nn.Module的自定义Model对象
         """
         self.model = model
         self.callbacks = callbacks
