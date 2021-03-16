@@ -52,12 +52,18 @@ class BertSelfAttention(nn.Module):
         x = x.view(*sz)               # (batch, pos, head, head_hid)
         return x.permute(0, 2, 1, 3)  # (batch, head, pos, head_hid)
 
-    def forward(self, hidden_states, attention_mask):
-        # TODO： 注意 attention_mask 什么时候 将值转化为 -10000
-
-        mixed_query_layer = self.query(hidden_states)  # adaptor:  hidden size -> head size * num of head
-        mixed_key_layer = self.key(hidden_states)
-        mixed_value_layer = self.value(hidden_states)
+    def forward(self, hidden_states, attention_mask, history_states=None):
+        "history_states: seq2seq 时使用"
+        if history_states is None:
+            mixed_query_layer = self.query(hidden_states)  # adaptor:  hidden size -> head size * num of head
+            mixed_key_layer = self.key(hidden_states)
+            mixed_value_layer = self.value(hidden_states)
+        else:
+            x_states = torch.cat((history_states, hidden_states), dim=1)
+            mixed_query_layer = self.query(hidden_states)
+            # seq2seq 时，key 和 value 会融合历史信息
+            mixed_key_layer = self.key(x_states)
+            mixed_value_layer = self.value(x_states)
 
         query_layer = self.transpose_for_scores(mixed_query_layer)  # batch, head, position, head_dim
         key_layer = self.transpose_for_scores(mixed_key_layer)      # batch, head, position, head_dim
@@ -100,12 +106,12 @@ class BertAttention(nn.Module):
         self.self = BertSelfAttention(config)
         self.output = BertSelfOutput(config)
 
-    def forward(self, input_tensor, attention_mask):
+    def forward(self, input_tensor, attention_mask, history_states=None):
         """
         hidden: hidden of layers,  (batch, position, 768)
         mask: to attention_scores, (batch, 1, seq_len, seq_len)
         """
-        self_output = self.self(input_tensor, attention_mask)
+        self_output = self.self(input_tensor, attention_mask, history_states=history_states)
         attention_output = self.output(self_output, input_tensor)   # (batch, position, 768)
         return attention_output
 
@@ -178,12 +184,13 @@ class BertLayer(nn.Module):
             self.intermediate = BertIntermediate(config)
             self.output = BertOutput(config)
 
-    def forward(self, hidden_states, attention_mask):
+    def forward(self, hidden_states, attention_mask, history_states=None):
         """
         hidden: hidden of layers,  (batch, position, 768)
         mask: to attention_scores, (batch, 1, seq_len, seq_len)
+        history_states: 在使用 bert seq2seq 时使用
         """
-        attention_output = self.attention(hidden_states, attention_mask)
+        attention_output = self.attention(hidden_states, attention_mask, history_states=history_states)
         if self.ffn_type:
             layer_output = self.ffn(attention_output)
         else:

@@ -2,25 +2,11 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="3f2bcf8a-a849-4589-b7e9-630d86e8a043" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/RaychSnippts.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/webResources.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/raych/layers/activation/gelu.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/raych/models/nlp/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/imdb_cls.py" beforeDir="false" afterPath="$PROJECT_DIR$/examples/imdb_bert_cls.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/imdb_lstm.py" beforeDir="false" afterPath="$PROJECT_DIR$/examples/imdb_lstm.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/raych/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/raych/callbacks/cbbase.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/callbacks/cbbase.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/raych/model/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/trainer/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/raych/model/model.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/trainer/trainer.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/raych/module/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/layers/activation/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/raych/module/nlp/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/models/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/raych/module/nlp/bert_binary_cls.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/models/nlp/bert_binary_cls.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/raych/test.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/test.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/raych/layers/translayers/baselayers.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/layers/translayers/baselayers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/raych/layers/translayers/bertSeq2Seq.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/layers/translayers/bertSeq2Seq.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/raych/layers/translayers/bertmodel.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/layers/translayers/bertmodel.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/raych/layers/translayers/tmp.py" beforeDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -81,7 +67,8 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1615773066541</updated>
-      <workItem from="1615773076845" duration="20524000" />
+      <workItem from="1615773076845" duration="23031000" />
+      <workItem from="1615870934726" duration="23092000" />
     </task>
     <servers />
   </component>
@@ -93,7 +80,9 @@
       <map>
         <entry key="MAIN">
           <value>
-            <State />
+            <State>
+              <option name="COLUMN_ORDER" />
+            </State>
           </value>
         </entry>
       </map>

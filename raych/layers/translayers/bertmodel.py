@@ -17,16 +17,28 @@ class BertEncoder(nn.Module):
         layer = BertLayer(config)
         self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
 
-    def forward(self, hidden_states, attention_mask, output_all_encoded_layers=True):
+    def forward(self, hidden_states, attention_mask, output_all_encoded_layers=True, prev_embedding=None, prev_encoded_layers=None):
+        "prev_embedding, prev_encoded_layers: 在 seq2seq 模型时使用"
+        # history embedding and encoded layer must be simultanously given
+        assert (prev_embedding is None) == (prev_encoded_layers is None)
+
         all_encoder_layers = []
-        for i, layer_module in enumerate(self.layer):
-            hidden_states = layer_module(hidden_states, attention_mask)
-            if output_all_encoded_layers:
-                all_encoder_layers.append(hidden_states)
+        if (prev_embedding is not None) and (prev_encoded_layers is not None):
+            history_states = prev_embedding
+            for i, layer_module in enumerate(self.layer):
+                hidden_states = layer_module(hidden_states, attention_mask, history_states=history_states)
+                if output_all_encoded_layers:
+                    all_encoder_layers.append(hidden_states)
+                if prev_encoded_layers is not None:
+                    history_states = prev_encoded_layers[i]
+        else:
+            for i, layer_module in enumerate(self.layer):
+                hidden_states = layer_module(hidden_states, attention_mask)
+                if output_all_encoded_layers:
+                    all_encoder_layers.append(hidden_states)
 
         if not output_all_encoded_layers:
             all_encoder_layers.append(hidden_states)
-
         return all_encoder_layers
 
 
