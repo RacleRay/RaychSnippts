@@ -1,13 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="3f2bcf8a-a849-4589-b7e9-630d86e8a043" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/raych/layers/translayers/baselayers.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/layers/translayers/baselayers.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/raych/layers/translayers/bertSeq2Seq.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/layers/translayers/bertSeq2Seq.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/raych/layers/translayers/bertmodel.py" beforeDir="false" afterPath="$PROJECT_DIR$/raych/layers/translayers/bertmodel.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/raych/layers/translayers/tmp.py" beforeDir="false" />
-    </list>
+    <list default="true" id="3f2bcf8a-a849-4589-b7e9-630d86e8a043" name="Default Changelist" comment="" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -68,7 +62,7 @@
       <option name="presentableId" value="Default" />
       <updated>1615773066541</updated>
       <workItem from="1615773076845" duration="23031000" />
-      <workItem from="1615870934726" duration="23092000" />
+      <workItem from="1615870934726" duration="23251000" />
     </task>
     <servers />
   </component>
