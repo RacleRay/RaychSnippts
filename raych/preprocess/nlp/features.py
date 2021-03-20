@@ -3,6 +3,13 @@ import numpy as np
 import jieba
 import jieba.posseg as pseg
 
+from gensim.models import KeyedVectors, TfidfModel
+from gensim.corpora import Dictionary
+from data_utils import read_samples, write_samples
+import os
+from gensim import matutils
+from itertools import islice
+import numpy as np
 
 ch2en = {
     '！': '!',
@@ -15,6 +22,13 @@ ch2en = {
     '；': ';',
     '｀': ','
 }
+
+
+def isChinese(word):
+    for ch in word:
+        if '\u4e00' <= ch <= '\u9fff':
+            return True
+    return False
 
 
 def strQ2B(ustring):
@@ -127,6 +141,97 @@ def get_embed_mat(word_vecs, k=300):
         word_idx_map[word] = i
         i += 1
     return W, word_idx_map
+
+
+class EmbedReplace:
+    "选择 tfidf 权重较小的词，根据其相似的 word vec 进行词替换"
+    def __init__(self, sample_path, wv_path):
+        samples = []
+        with open(sample_path, 'r', encoding='utf8') as file:
+            for line in file:
+                samples.append(line.strip())
+        self.samples = samples
+
+        self.wv = KeyedVectors.load_word2vec_format(wv_path, binary=False)
+
+        if os.path.exists('saved/tfidf.model'):
+            self.tfidf_model = TfidfModel.load('saved/tfidf.model')
+            self.dct = Dictionary.load('saved/tfidf.dict')
+            self.corpus = [self.dct.doc2bow(doc) for doc in self.samples]
+        else:
+            self.dct = Dictionary(self.samples)
+            self.corpus = [self.dct.doc2bow(doc) for doc in self.samples]
+            self.tfidf_model = TfidfModel(self.corpus)
+            self.dct.save('saved/tfidf.dict')
+            self.tfidf_model.save('saved/tfidf.model')
+            self.vocab_size = len(self.dct.token2id)
+
+
+    def vectorize(self, docs, vocab_size):
+        '''
+        Args:
+            docs: bag-of-words format, iterable of iterable of (int, number)
+            vocab_size (int) – Number of terms in the dictionary. X-axis of the resulting matrix.
+        '''
+        return matutils.corpus2dense(docs, vocab_size)
+
+
+    def _extract_keywords(self, dct, tfidf, threshold=0.2, topk=5):
+        """find high TFIDF socore keywords
+
+        Args:
+            dct (Dictionary): gensim.corpora Dictionary
+            tfidf (list of tfidf):  model[doc]  [(word index, tfidf)]
+            threshold (float)
+            topk(int): num of highest TFIDF socore
+        Returns:
+            (list): A list of keywords
+        """
+        tfidf = sorted(tfidf, key=lambda x: x[1], reverse=True)
+        return list(islice([dct[w] for w, score in tfidf if score > threshold], topk))
+
+
+    def _replace(self, token_list, doc, percent=0.3):
+        """replace token by another token which is similar in wordvector
+
+        Args:
+            token_list (list): reference token list
+            doc (list): A reference represented by a word bag model
+        Returns:
+            (str):  new reference str
+        """
+        keywords = self._extract_keywords(self.dct, self.tfidf_model[doc])  # 关键词不替换
+        num = int(len(token_list) * percent)
+
+        new_tokens = token_list.copy()
+        indexes = np.random.choice(len(token_list), num)
+        for index in indexes:
+            token = token_list[index]
+            if isChinese(token) and token not in keywords and token in self.wv:
+                new_tokens[index] = self.wv.most_similar(positive=token, negative=None, topn=1)[0][0]
+
+        return ' '.join(new_tokens)
+
+
+    def generate_samples(self, write_path, opt="w"):
+        """generate new samples file
+        Args:
+            write_path (str):  new samples file path
+        """
+        replaced = []
+        count = 0
+        for token_list, doc in zip(self.samples, self.corpus):
+            count += 1
+            if count % 100 == 0:
+                print("Processing samples ", count, "...")
+
+                with open(write_path, opt, encoding='utf8') as file:
+                    for line in samples:
+                        file.write(line)
+                        file.write('\n')
+
+                replaced = []
+            replaced.append(self._replace(token_list, doc))
 
 
 
