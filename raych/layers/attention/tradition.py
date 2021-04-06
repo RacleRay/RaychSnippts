@@ -1,13 +1,30 @@
-import os
-import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-import torch.nn.init as init
 from torch.nn.parameter import Parameter
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
 from torch.nn.utils.rnn import pack_padded_sequence as pack
+
+
+def seq_dropout(x, p=0, training=False):
+    """
+    x: batch * len * input_size
+    """
+    if training == False or p == 0:
+        return x
+    dropout_mask = Variable(1.0 / (1-p) * torch.bernoulli((1-p) * (x.data.new(x.size(0), x.size(2)).zero_() + 1)), requires_grad=False)
+    return dropout_mask.unsqueeze(1).expand_as(x) * x
+
+
+def dropout(x, p=0, training=False, do_seq_dropout=False):
+    """
+    x: (batch * len * input_size) or (any other shape)
+    """
+    if do_seq_dropout and len(x.size()) == 3: # if x is (batch * len * input_size)
+        return seq_dropout(x, p=p, training=training)
+    else:
+        return F.dropout(x, p=p, training=training)
 
 
 class AttentionScore(nn.Module):
@@ -18,25 +35,31 @@ class AttentionScore(nn.Module):
     correlation_func = 4, sij = x1^TWx2
     correlation_func = 5, sij = Relu(Wx1)DRelu(Wx2)
     """
-    def __init__(self, input_size, hidden_size, correlation_func = 1, do_similarity = False):
+    def __init__(self,
+                 input_size,
+                 hidden_size,
+                 correlation_func=1,
+                 do_similarity=False):
         super(AttentionScore, self).__init__()
         self.correlation_func = correlation_func
         self.hidden_size = hidden_size
 
         if correlation_func == 2 or correlation_func == 3:
-            self.linear = nn.Linear(input_size, hidden_size, bias = False)
+            self.linear = nn.Linear(input_size, hidden_size, bias=False)
             if do_similarity:
-                self.diagonal = Parameter(torch.ones(1, 1, 1) / (hidden_size ** 0.5), requires_grad = False)
+                self.diagonal = Parameter(torch.ones(1, 1, 1) / (hidden_size**0.5),
+                                          requires_grad=False)
             else:
-                self.diagonal = Parameter(torch.ones(1, 1, hidden_size), requires_grad = True)
+                self.diagonal = Parameter(torch.ones(1, 1, hidden_size),
+                                          requires_grad=True)
 
         if correlation_func == 4:
             self.linear = nn.Linear(input_size, input_size, bias=False)
 
         if correlation_func == 5:
-            self.linear = nn.Linear(input_size, hidden_size, bias = False)
+            self.linear = nn.Linear(input_size, hidden_size, bias=False)
 
-    def forward(self, x1, x2):
+    def forward(self, x1, x2, dropout_p=0.0, do_seq_dropout=False):
         '''
         Input:
         x1: batch x word_num1 x dim
@@ -44,8 +67,8 @@ class AttentionScore(nn.Module):
         Output:
         scores: batch x word_num1 x word_num2
         '''
-        x1 = dropout(x1, p = dropout_p, training = self.training)
-        x2 = dropout(x2, p = dropout_p, training = self.training)
+        x1 = dropout(x1, p=dropout_p, training=self.training, do_seq_dropout=do_seq_dropout)
+        x2 = dropout(x2, p=dropout_p, training=self.training, do_seq_dropout=do_seq_dropout)
 
         x1_rep = x1
         x2_rep = x2
@@ -54,8 +77,10 @@ class AttentionScore(nn.Module):
         word_num2 = x2_rep.size(1)
         dim = x1_rep.size(2)
         if self.correlation_func == 2 or self.correlation_func == 3:
-            x1_rep = self.linear(x1_rep.contiguous().view(-1, dim)).view(batch, word_num1, self.hidden_size)  # Wx1
-            x2_rep = self.linear(x2_rep.contiguous().view(-1, dim)).view(batch, word_num2, self.hidden_size)  # Wx2
+            x1_rep = self.linear(x1_rep.contiguous().view(-1, dim)).view(
+                batch, word_num1, self.hidden_size)  # Wx1
+            x2_rep = self.linear(x2_rep.contiguous().view(-1, dim)).view(
+                batch, word_num2, self.hidden_size)  # Wx2
             if self.correlation_func == 3:
                 x1_rep = F.relu(x1_rep)
                 x2_rep = F.relu(x2_rep)
@@ -64,23 +89,32 @@ class AttentionScore(nn.Module):
             # x1_rep: batch x word_num1 x dim (corr=1) or hidden_size (corr=2,3)
 
         if self.correlation_func == 4:
-            x2_rep = self.linear(x2_rep.contiguous().view(-1, dim)).view(batch, word_num2, dim)  # Wx2
+            x2_rep = self.linear(x2_rep.contiguous().view(-1, dim)).view(
+                batch, word_num2, dim)  # Wx2
 
         if self.correlation_func == 5:
-            x1_rep = self.linear(x1_rep.contiguous().view(-1, dim)).view(batch, word_num1, self.hidden_size)  # Wx1
-            x2_rep = self.linear(x2_rep.contiguous().view(-1, dim)).view(batch, word_num2, self.hidden_size)  # Wx2
+            x1_rep = self.linear(x1_rep.contiguous().view(-1, dim)).view(
+                batch, word_num1, self.hidden_size)  # Wx1
+            x2_rep = self.linear(x2_rep.contiguous().view(-1, dim)).view(
+                batch, word_num2, self.hidden_size)  # Wx2
             x1_rep = F.relu(x1_rep)
             x2_rep = F.relu(x2_rep)
 
         scores = x1_rep.bmm(x2_rep.transpose(1, 2))
         return scores
 
-class Attention(nn.Module):
-    def __init__(self, input_size, hidden_size, correlation_func = 1, do_similarity = False):
-        super(Attention, self).__init__()
-        self.scoring = AttentionScore(input_size, hidden_size, correlation_func, do_similarity)
 
-    def forward(self, x1, x2, x2_mask, x3 = None, drop_diagonal=False):
+class Attention(nn.Module):
+    def __init__(self,
+                 input_size,
+                 hidden_size,
+                 correlation_func=1,
+                 do_similarity=False):
+        super(Attention, self).__init__()
+        self.scoring = AttentionScore(input_size, hidden_size,
+                                      correlation_func, do_similarity)
+
+    def forward(self, x1, x2, x2_mask, x3=None, drop_diagonal=False):
         '''
         For each word in x1, get its attended linear combination of x3 (if none, x2),
          using scores calculated between x1 and x2.
@@ -92,9 +126,9 @@ class Attention(nn.Module):
         Output:
          attended: batch x word_num1 x dim_3
         '''
-        batch = x1.size(0)
-        word_num1 = x1.size(1)
-        word_num2 = x2.size(1)
+        # batch = x1.size(0)
+        # word_num1 = x1.size(1)
+        # word_num2 = x2.size(1)
 
         if x3 is None:
             x3 = x2
@@ -106,12 +140,14 @@ class Attention(nn.Module):
         scores.data.masked_fill_(empty_mask.data, -float('inf'))
 
         if drop_diagonal:
-            assert(scores.size(1) == scores.size(2))
-            diag_mask = torch.diag(scores.data.new(scores.size(1)).zero_() + 1).byte().unsqueeze(0).expand_as(scores)
+            assert (scores.size(1) == scores.size(2))
+            diag_mask = torch.diag(
+                scores.data.new(scores.size(1)).zero_() +
+                1).byte().unsqueeze(0).expand_as(scores)
             scores.data.masked_fill_(diag_mask, -float('inf'))
 
         # softmax
-        alpha_flat = F.softmax(scores.view(-1, x2.size(1)), dim = 1)
+        alpha_flat = F.softmax(scores.view(-1, x2.size(1)), dim=1)
         alpha = alpha_flat.view(-1, x1.size(1), x2.size(1))
         # alpha: batch x word_num1 x word_num2
 
@@ -130,21 +166,20 @@ class LinearSelfAttn(nn.Module):
         super(LinearSelfAttn, self).__init__()
         self.linear = nn.Linear(input_size, 1)
 
-    def forward(self, x, x_mask):
+    def forward(self, x, x_mask, dropout_p=0.0, do_seq_dropout=False):
         """
         x = batch * len * hdim
         x_mask = batch * len
         """
         empty_mask = x_mask.eq(0).expand_as(x_mask)
 
-        x = dropout(x, p=dropout_p, training=self.training)
+        x = dropout(x, p=dropout_p, training=self.training, do_seq_dropout=do_seq_dropout)
 
         x_flat = x.contiguous().view(-1, x.size(-1))
         scores = self.linear(x_flat).view(x.size(0), x.size(1))
         scores.data.masked_fill_(empty_mask.data, -float('inf'))
-        alpha = F.softmax(scores, dim = 1)
+        alpha = F.softmax(scores, dim=1)
         return alpha
-
 
 
 # For attending the span in document from the query
@@ -159,7 +194,7 @@ class BilinearSeqAttn(nn.Module):
         else:
             self.linear = None
 
-    def forward(self, x, y, x_mask):
+    def forward(self, x, y, x_mask, dropout_p=0.0, do_seq_dropout=False):
         """
         x = batch * len * h1
         y = batch * h2
@@ -167,8 +202,8 @@ class BilinearSeqAttn(nn.Module):
         """
         empty_mask = x_mask.eq(0).expand_as(x_mask)
 
-        x = dropout(x, p=dropout_p, training=self.training)
-        y = dropout(y, p=dropout_p, training=self.training)
+        x = dropout(x, p=dropout_p, training=self.training, do_seq_dropout=do_seq_dropout)
+        y = dropout(y, p=dropout_p, training=self.training, do_seq_dropout=do_seq_dropout)
 
         Wy = self.linear(y) if self.linear is not None else y  # batch * h1
         xWy = x.bmm(Wy.unsqueeze(2)).squeeze(2)  # batch * len
@@ -176,28 +211,133 @@ class BilinearSeqAttn(nn.Module):
         return xWy
 
 
+class StackedBRNN(nn.Module):
+    def __init__(self,
+                 input_size,
+                 hidden_size,
+                 num_layers,
+                 rnn_type=nn.LSTM,
+                 concat_layers=False,
+                 bidirectional=True,
+                 add_feat=0):
+        super(StackedBRNN, self).__init__()
+        self.bidir_coef = 2 if bidirectional else 1
+        self.num_layers = num_layers
+        self.concat_layers = concat_layers
+        self.hidden_size = hidden_size
+        self.rnns = nn.ModuleList()
+        for i in range(num_layers):
+            in_size = input_size if i == 0 else (
+                self.bidir_coef * hidden_size +
+                add_feat if i == 1 else self.bidir_coef * hidden_size)
+            rnn = rnn_type(in_size,
+                           hidden_size,
+                           num_layers=1,
+                           bidirectional=bidirectional,
+                           batch_first=True)
+            self.rnns.append(rnn)
+
+    @property
+    def output_size(self):
+        if self.concat_layers:
+            return self.num_layers * self.bidir_coef * self.hidden_size
+        else:
+            return self.bidir_coef * self.hidden_size
+
+    """
+       Multi-layer bi-RNN
+
+       Arguments:
+           x (Float Tensor): a Float Tensor of size (batch * wordnum * input_dim).
+           x_mask (Byte Tensor): a Byte Tensor of mask for the input tensor (batch * wordnum).
+           x_additional (Byte Tensor): a Byte Tensor of mask for the additional input tensor (batch * wordnum * additional_dim).
+           x_out (Float Tensor): a Float Tensor of size (batch * wordnum * output_size).
+    """
+
+    def forward(self, x, x_mask, return_list=False, x_additional=None, dropout_p=0.0, do_seq_dropout=False):
+        hiddens = [x]
+        for i in range(self.num_layers):
+            rnn_input = hiddens[-1]
+            if i == 1 and x_additional is not None:
+                rnn_input = torch.cat((rnn_input, x_additional), 2)
+
+            if dropout_p > 0:
+                rnn_input = dropout(rnn_input, p=dropout_p, training=self.training, do_seq_dropout=do_seq_dropout)
+
+            rnn_output = self.rnns[i](rnn_input)[0]
+            hiddens.append(rnn_output)
+
+        if self.concat_layers:
+            output = torch.cat(hiddens[1:], 2)
+        else:
+            output = hiddens[-1]
+
+        if return_list:
+            return output, hiddens[1:]
+        else:
+            return output
+
+
+def RNN_from_opt(input_size_, hidden_size_, num_layers=1, concat_rnn=False, add_feat=0, bidirectional=True, rnn_type=nn.LSTM):
+    new_rnn = StackedBRNN(
+        input_size=input_size_,
+        hidden_size=hidden_size_,
+        num_layers=num_layers,
+        rnn_type=rnn_type,
+        concat_layers=concat_rnn,
+        bidirectional=bidirectional,
+        add_feat=add_feat
+    )
+
+    output_size = hidden_size_
+    if bidirectional:
+        output_size *= 2
+    if concat_rnn:
+        output_size *= num_layers
+
+    return new_rnn, output_size
+
 
 # History-of-Word Multi-layer inter-attention
 class DeepAttention(nn.Module):
-    def __init__(self, opt, abstr_list_cnt, deep_att_hidden_size_per_abstr, correlation_func=1, word_hidden_size=None):
+    def __init__(self,
+                 opt,
+                 abstr_list_cnt,
+                 deep_att_hidden_size_per_abstr,
+                 correlation_func=1,
+                 word_hidden_size=None):
         super(DeepAttention, self).__init__()
 
-        word_hidden_size = opt['embedding_dim'] if word_hidden_size is None else word_hidden_size
+        word_hidden_size = opt[
+            'embedding_dim'] if word_hidden_size is None else word_hidden_size
         abstr_hidden_size = opt['hidden_size'] * 2
 
         att_size = abstr_hidden_size * abstr_list_cnt + word_hidden_size
         self.int_attn_list = nn.ModuleList()
-        for i in range(abstr_list_cnt+1):
-            self.int_attn_list.append(Attention(att_size, deep_att_hidden_size_per_abstr, correlation_func = correlation_func))
+        for i in range(abstr_list_cnt + 1):
+            self.int_attn_list.append(
+                Attention(att_size,
+                          deep_att_hidden_size_per_abstr,
+                          correlation_func=correlation_func))
 
-        rnn_input_size = abstr_hidden_size * abstr_list_cnt * 2 + (opt['highlvl_hidden_size'] * 2)
+        rnn_input_size = abstr_hidden_size * abstr_list_cnt * 2 + (
+            opt['highlvl_hidden_size'] * 2)
 
         self.rnn_input_size = rnn_input_size
-        self.rnn, self.output_size = RNN_from_opt(rnn_input_size, opt['highlvl_hidden_size'], num_layers=1)
+        self.rnn, self.output_size = RNN_from_opt(rnn_input_size,
+                                                  opt['highlvl_hidden_size'],
+                                                  num_layers=1)
 
         self.opt = opt
 
-    def forward(self, x1_word, x1_abstr, x2_word, x2_abstr, x1_mask, x2_mask, return_bef_rnn=False):
+    def forward(self,
+                x1_word,
+                x1_abstr,
+                x2_word,
+                x2_abstr,
+                x1_mask,
+                x2_mask,
+                return_bef_rnn=False):
         """
         x1_word, x2_word, x1_abstr, x2_abstr are list of 3D tensors.
         3D tensor: batch_size * length * hidden_size
@@ -209,7 +349,10 @@ class DeepAttention(nn.Module):
 
         x2_list = x2_abstr
         for i in range(len(x2_list)):
-            attn_hiddens = self.int_attn_list[i](x1_att, x2_att, x2_mask, x3=x2_list[i])
+            attn_hiddens = self.int_attn_list[i](x1_att,
+                                                 x2_att,
+                                                 x2_mask,
+                                                 x3=x2_list[i])
             x1 = torch.cat((x1, attn_hiddens), 2)
 
         x1_hiddens = self.rnn(x1, x1_mask)
@@ -219,11 +362,10 @@ class DeepAttention(nn.Module):
             return x1_hiddens
 
 
-
 # bmm: batch matrix multiplication
 # unsqueeze: add singleton dimension
 # squeeze: remove singleton dimension
-def weighted_avg(x, weights): # used in lego_reader.py
+def weighted_avg(x, weights):  # used in lego_reader.py
     """
         x = batch * len * d
         weights = batch * len
