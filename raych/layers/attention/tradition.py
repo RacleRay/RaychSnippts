@@ -3,8 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.nn.parameter import Parameter
-from torch.nn.utils.rnn import pad_packed_sequence as unpack
-from torch.nn.utils.rnn import pack_padded_sequence as pack
 
 
 def seq_dropout(x, p=0, training=False):
@@ -46,6 +44,7 @@ class AttentionScore(nn.Module):
 
         if correlation_func == 2 or correlation_func == 3:
             self.linear = nn.Linear(input_size, hidden_size, bias=False)
+            # 初始化参数是否除以维度的平方根，以及是否可以训练
             if do_similarity:
                 self.diagonal = Parameter(torch.ones(1, 1, 1) / (hidden_size**0.5),
                                           requires_grad=False)
@@ -139,6 +138,7 @@ class Attention(nn.Module):
         empty_mask = x2_mask.eq(0).unsqueeze(1).expand_as(scores)
         scores.data.masked_fill_(empty_mask.data, -float('inf'))
 
+        # drop_diagonal设置自己对自己不计算注意力，设为负无穷
         if drop_diagonal:
             assert (scores.size(1) == scores.size(2))
             diag_mask = torch.diag(
