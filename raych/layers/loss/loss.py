@@ -1,8 +1,76 @@
-from . import functional as BF
 from torch import nn
 from torch.nn import functional as F
 from torch.nn.modules.loss import _WeightedLoss
 import torch
+
+"""
+# reference: https://github.com/PistonY/torch-toolbox
+
+include classes:
+ - SigmoidCrossEntropy
+ - FocalLoss
+ - FocalLossSoftmax
+ - L0Loss
+ - LabelSmoothingLoss
+ - CircleLoss
+ - RingLoss
+ - KnowledgeDistillationLoss
+"""
+
+def logits_distribution(pred, target, classes):
+    one_hot = F.one_hot(target, num_classes=classes).bool()
+    return torch.where(one_hot, pred, -1 * pred)
+
+
+def reducing(ret, reduction='mean'):
+    if reduction == 'mean':
+        ret = torch.mean(ret)
+    elif reduction == 'sum':
+        ret = torch.sum(ret)
+    elif reduction == 'none':
+        pass
+    else:
+        raise NotImplementedError
+    return ret
+
+
+def _batch_weight(weight, target):
+    "weight : (#classes), target: (#batches). 相当于根据target的index从weight中取出权值"
+    return weight.gather(dim=0, index=target)
+
+
+def logits_nll_loss(input, target, weight=None, reduction='mean'):
+    """logits_nll_loss
+    Different from nll loss, this is for sigmoid based loss.
+    The difference is this will add along C(class) dim.
+    和torch自带的NLLLoss相差不大
+    """
+    assert input.dim() == 2, 'Input shape should be (B, C).'
+    if input.size(0) != target.size(0):
+        raise ValueError('Expected input batch_size ({}) to match target batch_size ({}).'.format(
+            input.size(0), target.size(0)))
+
+    ret = input.sum(dim=-1)  # (B), 作用就只能说是放大weight权值
+    if weight is not None:
+        ret = _batch_weight(weight, target) * ret
+    return reducing(ret, reduction)
+
+
+@torch.no_grad()
+def smooth_one_hot(true_labels: torch.Tensor, classes: int, smoothing=0.0):
+    """
+    if smoothing == 0, it's one-hot method
+    if 0 < smoothing < 1, it's smooth method
+    Warning: This function has no grad.
+    """
+    # assert 0 <= smoothing < 1
+    confidence = 1.0 - smoothing
+    label_shape = torch.Size((true_labels.size(0), classes))  # (batch, classes)
+
+    smooth_label = torch.empty(size=label_shape, device=true_labels.device)
+    smooth_label.fill_(smoothing / (classes - 1))  # (batch, classes) filled with smoothed false label
+    smooth_label.scatter_(dim=1, index=true_labels.data.unsqueeze(1), confidence) # fill the true label position
+    return smooth_label
 
 
 class SigmoidCrossEntropy(_WeightedLoss):
@@ -11,20 +79,108 @@ class SigmoidCrossEntropy(_WeightedLoss):
         self.classes = classes
 
     def forward(self, pred, target):
-        zt = BF.logits_distribution(pred, target, self.classes)
-        return BF.logits_nll_loss(-F.logsigmoid(zt), target, self.weight, self.reduction)
+        zt = logits_distribution(pred, target, self.classes)
+        return logits_nll_loss(-F.logsigmoid(zt), target, self.weight, self.reduction)
 
 
 class FocalLoss(_WeightedLoss):
     def __init__(self, classes, gamma, weight=None, reduction='mean'):
+        "gamma在原文中初值为2。但使用时设置为靠近0的值，效果更好一些。"
         super(FocalLoss, self).__init__(weight=weight, reduction=reduction)
         self.classes = classes
         self.gamma = gamma
 
     def forward(self, pred, target):
-        zt = BF.logits_distribution(pred, target, self.classes)
+        zt = logits_distribution(pred, target, self.classes)
         ret = -(1 - torch.sigmoid(zt)).pow(self.gamma) * F.logsigmoid(zt)
-        return BF.logits_nll_loss(ret, target, self.weight, self.reduction)
+        return logits_nll_loss(ret, target, self.weight, self.reduction)
+
+
+class FocalLossSoftmax(nn.Module):
+    """
+    Focal loss(https://arxiv.org/pdf/1708.02002.pdf)
+    Shape:
+        - input: (N, C)
+        - target: (N)
+        - Output: Scalar loss
+    Examples:
+        >>> loss = FocalLoss(gamma=2, alpha=[1.0]*7)
+        >>> input = torch.randn(3, 7, requires_grad=True)
+        >>> target = torch.empty(3, dtype=torch.long).random_(7)
+        >>> output = loss(input, target)
+        >>> output.backward()
+    """
+    def __init__(self, gamma=0, alpha=None, reduction="none"):
+        super(FocalLoss, self).__init__()
+        self.gamma = gamma
+        self.alpha = alpha
+        if alpha is not None:
+            if isinstance(alpha, list):
+                self.alpha = torch.FloatTensor(alpha)
+            else:
+                self.alpha = alpha
+
+        self.reduction = reduction
+
+    def forward(self, input, target):
+        '''
+        - input: (N, C), logits
+        - target: (N)
+        - Output: Scalar loss
+
+        Parameters
+        ----------
+        input
+        target
+
+        Returns
+        -------
+
+        '''
+        # [N, 1]
+        target = target.unsqueeze(-1)
+        # [N, C]
+        pt = F.softmax(input, dim=-1)
+        logpt = F.log_softmax(input, dim=-1)
+
+        # [N]
+        pt = pt.gather(1, target).squeeze(-1)
+        logpt = logpt.gather(1, target).squeeze(-1)
+
+        # class weights
+        if self.alpha is not None:
+            # alpha[target[i]]
+            at = self.alpha.gather(0, target.squeeze(-1))
+            logpt = logpt * at.to(logpt.device)
+
+        loss = -1 * (1 - pt) ** self.gamma * logpt
+        if self.reduction == "none":
+            return loss
+        if self.reduction == "mean":
+            return loss.mean()
+        return loss.sum()
+
+    @staticmethod
+    def convert_binary_pred_to_two_dimension(x, is_logits=True):
+        """
+        Args:
+            x: (*): (log) prob of some instance has label 1
+            is_logits: if True, x represents log prob; otherwhise presents prob
+        Returns:
+            y: (*, 2), where y[*, 1] == log prob of some instance has label 0,
+                             y[*, 0] = log prob of some instance has label 1
+        """
+        probs = torch.sigmoid(x) if is_logits else x
+        probs = probs.unsqueeze(-1)
+        probs = torch.cat([1-probs, probs], dim=-1)
+        logprob = torch.log(probs+1e-4)  # 1e-4 to prevent being rounded to 0 in fp16
+        return logprob
+
+    def __str__(self):
+        return f"Focal Loss gamma:{self.gamma}"
+
+    def __repr__(self):
+        return str(self)
 
 
 class L0Loss(nn.Module):
@@ -54,7 +210,7 @@ class LabelSmoothingLoss(nn.Module):
 
     def forward(self, pred, target):
         pred = pred.log_softmax(dim=self.dim)
-        true_dist = BF.smooth_one_hot(target, self.cls, self.smoothing)
+        true_dist = smooth_one_hot(target, self.cls, self.smoothing)
         return torch.mean(torch.sum(-true_dist * pred, dim=self.dim))
 
 

@@ -3,6 +3,11 @@ import json
 import sys
 import gzip
 import shutil
+import dill
+import hashlib
+import io
+import base58
+from typing import Any
 from six.moves import urllib
 from datetime import datetime
 from raych.util import logger
@@ -71,6 +76,15 @@ def write_file(file_contents, file_path):
 
     with open(file_path, file_mode, **open_kwargs) as f:
         f.write(file_contents)
+
+
+def hash_object(o: Any) -> str:
+    """Returns a character hash code of arbitrary Python objects."""
+    m = hashlib.blake2b()
+    with io.BytesIO() as buffer:
+        dill.dump(o, buffer)
+        m.update(buffer.getbuffer())
+        return base58.b58encode(m.digest()).decode()
 
 
 @show_runtime

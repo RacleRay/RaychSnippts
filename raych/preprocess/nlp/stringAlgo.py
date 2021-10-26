@@ -188,9 +188,6 @@ def backward_maximal_matching(string, vocab):
 
 
 
-
-
-
 if __name__ == '__main__':
     string = "你好啊朋友你好啊"
     print(getMaxCommonStr(string))

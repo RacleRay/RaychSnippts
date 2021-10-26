@@ -37,7 +37,7 @@
     <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
-    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PythonContentEntriesConfigurable" />
+    <property name="settings.editor.selected.configurable" value="yiiguxing.plugin.translate" />
   </component>
   <component name="RunDashboard">
     <option name="ruleStates">
@@ -63,6 +63,8 @@
       <updated>1615773066541</updated>
       <workItem from="1615773076845" duration="23031000" />
       <workItem from="1615870934726" duration="23251000" />
+      <workItem from="1630228852547" duration="93000" />
+      <workItem from="1632712026231" duration="196000" />
     </task>
     <servers />
   </component>
