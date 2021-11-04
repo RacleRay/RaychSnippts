@@ -7,6 +7,7 @@ from raych.layers.aggregator.pooler import (
     SelfAttnAggregator, DynamicRoutingAggregator,
     MaxPoolerAggregator, AvgPoolerAggregator
 )
+from raych.layers.classifier.classify_head import Classifier
 
 
 class AggregatorLayer(nn.Module):
@@ -76,8 +77,9 @@ class ClassificationModel(nn.Module):
         self.aggregator = AggregatorLayer(hidden_dim, device, agg_name)
 
         # 分类层
-        self.dropout = nn.Dropout(p=0.2)
-        self.linear = nn.Linear(hidden_dim, self.num_labels)
+        self.classifier = Classifier(dropout_rate=0.2,
+                                     input_dim=hidden_dim,
+                                     num_labels=self.num_labels)
 
         # class weights
         self.class_weights = None
@@ -95,9 +97,7 @@ class ClassificationModel(nn.Module):
         input_tensors = self.embeddings(input_ids)
         output_tensors = self.encoder(input_tensors)
         pooled_outputs = self.aggregator(output_tensors, mask=attention_mask)
-
-        logits = self.dropout(pooled_outputs)
-        logits = self.linear(logits)
+        logits = self.classifier(pooled_outputs)
 
         outputs = (logits, )
 

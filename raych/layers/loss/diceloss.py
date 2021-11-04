@@ -128,7 +128,7 @@ class DiceLoss(nn.Module):
                     neg_scores_sort, _ = torch.sort(neg_scores_idx, )
                     threshold = neg_scores_sort[-keep_num + 1]
 
-                    # 预测为本标签或者正确标签是本标签
+                    # 预测为本标签 或者 正确标签是本标签
                     cond = (torch.argmax(flat_input, dim=1) == label_idx & flat_input[:, label_idx] >= threshold) | pos_example.view(-1)
                     ohem_mask_idx = torch.where(cond, 1, 0)
 

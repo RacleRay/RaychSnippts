@@ -30,13 +30,12 @@ class MultiSampleClassifier(nn.Module):
             if i == 0:
                 out = dropout_op(x)
                 logits = self.linear(out)
-
             else:
                 temp_out = dropout_op(x)
                 temp_logits = self.linear(temp_out)
                 logits += temp_logits
 
-        # 相加还是求平均？
+        # 相加或者平均
         if self.agg_method == "avg":
             logits = logits / self.dropout_num
 
