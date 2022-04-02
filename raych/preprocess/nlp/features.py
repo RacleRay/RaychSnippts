@@ -1,15 +1,15 @@
 import string
+import re
 import numpy as np
 import jieba
 import jieba.posseg as pseg
 
 from gensim.models import KeyedVectors, TfidfModel
 from gensim.corpora import Dictionary
-from data_utils import read_samples, write_samples
 import os
 from gensim import matutils
 from itertools import islice
-import numpy as np
+
 
 ch2en = {
     '！': '!',
@@ -144,7 +144,7 @@ def get_embed_mat(word_vecs, k=300):
 
 
 class EmbedReplace:
-    "选择 tfidf 权重较小的词，根据其相似的 word vec 进行词替换"
+    "选择 tfidf 权重较小的词，根据这些词与其他词的word vec的相似性排序，选择进行词替换"
     def __init__(self, sample_path, wv_path):
         samples = []
         with open(sample_path, 'r', encoding='utf8') as file:
@@ -226,7 +226,7 @@ class EmbedReplace:
                 print("Processing samples ", count, "...")
 
                 with open(write_path, opt, encoding='utf8') as file:
-                    for line in samples:
+                    for line in self.samples:
                         file.write(line)
                         file.write('\n')
 
@@ -313,8 +313,7 @@ def Find_Label_embedding(example_matrix, label_embedding, method='mean'):
     '''
     # 根据矩阵乘法来计算label与word之间的相似度
     # (len example, len label)
-    similarity_matrix = np.dot(example_matrix, label_embedding.T) /
-        (np.linalg.norm(example_matrix) * (np.linalg.norm(label_embedding)))
+    similarity_matrix = np.dot(example_matrix, label_embedding.T) / (np.linalg.norm(example_matrix) * np.linalg.norm(label_embedding))
 
     # “类别-词语”的注意力机制
     attention = similarity_matrix.max(axis=0)

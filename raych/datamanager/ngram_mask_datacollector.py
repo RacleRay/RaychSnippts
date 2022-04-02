@@ -189,7 +189,7 @@ class NGramDataCollator:
             token_idx = now_input.index(rd_token)
 
             # words order shuffled
-            tmp = now_input[token_idx: token_idx + 3])
+            tmp = now_input[token_idx: token_idx + 3]
             np.random.shuffle(tmp)
 
             # change data and mark
@@ -242,7 +242,7 @@ class NGramDataCollator:
         return data_dict
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
     ### example for pretrain
     # tokenizer = BertTokenizer.from_pretrained(vocab_path)
     # model_config = BertConfig.from_pretrained(pretrain_model_path)
@@ -268,3 +268,4 @@ if __name__ == "__main__":
     # trainer.train()
     # trainer.save_model(save_path)
     # tokenizer.save_pretrained(save_path)
+
