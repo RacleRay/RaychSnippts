@@ -50,7 +50,7 @@ def logits_nll_loss(input, target, weight=None, reduction='mean'):
         raise ValueError('Expected input batch_size ({}) to match target batch_size ({}).'.format(
             input.size(0), target.size(0)))
 
-    ret = input.sum(dim=-1)  # (B), 作用就只能说是放大weight权值
+    ret = input.sum(dim=-1)
     if weight is not None:
         ret = _batch_weight(weight, target) * ret
     return reducing(ret, reduction)
@@ -69,7 +69,7 @@ def smooth_one_hot(true_labels: torch.Tensor, classes: int, smoothing=0.0):
 
     smooth_label = torch.empty(size=label_shape, device=true_labels.device)
     smooth_label.fill_(smoothing / (classes - 1))  # (batch, classes) filled with smoothed false label
-    smooth_label.scatter_(dim=1, index=true_labels.data.unsqueeze(1), confidence) # fill the true label position
+    smooth_label.scatter_(dim=1, index=true_labels.data.unsqueeze(1), value=confidence) # fill the true label position
     return smooth_label
 
 
@@ -82,6 +82,24 @@ class SigmoidCrossEntropy(_WeightedLoss):
         zt = logits_distribution(pred, target, self.classes)
         return logits_nll_loss(-F.logsigmoid(zt), target, self.weight, self.reduction)
 
+
+class CELoss(nn.Module):
+    ''' Cross Entropy Loss'''
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, pred, target):
+        '''
+        Args:
+            pred: prediction of model output [N, M]
+            target: ground truth             [N]
+        '''
+        eps = 1e-12
+        # standard cross entropy loss
+        loss = -1. * pred.gather(1, target.unsqueeze(-1)) + \
+                torch.log(torch.exp(pred+eps).sum(dim=1))
+
+        return loss.mean()
 
 class FocalLoss(_WeightedLoss):
     def __init__(self, classes, gamma, weight=None, reduction='mean'):
@@ -212,6 +230,39 @@ class LabelSmoothingLoss(nn.Module):
         pred = pred.log_softmax(dim=self.dim)
         true_dist = smooth_one_hot(target, self.cls, self.smoothing)
         return torch.mean(torch.sum(-true_dist * pred, dim=self.dim))
+
+
+class CrossEntropyLabelSmooth(nn.Module):
+    """Cross entropy loss with label smoothing regularizer. Same as LabelSmoothingLoss.
+
+    Reference:
+    Szegedy et al. Rethinking the Inception Architecture for Computer Vision. CVPR 2016.
+    Equation: y = (1 - epsilon) * y + epsilon / K.
+
+    Args:
+        num_classes (int): number of classes.
+        epsilon (float): weight.
+    """
+
+    def __init__(self, num_classes, epsilon=0.1, use_gpu=True):
+        super(CrossEntropyLabelSmooth, self).__init__()
+        self.num_classes = num_classes
+        self.epsilon = epsilon
+        self.use_gpu = use_gpu
+        self.logsoftmax = nn.LogSoftmax(dim=1)
+
+    def forward(self, inputs, targets):
+        """
+        Args:
+            inputs: prediction matrix (before softmax) with shape (batch_size, num_classes)
+            targets: ground truth labels with shape (num_classes)
+        """
+        log_probs = self.logsoftmax(inputs)
+        targets = torch.zeros(log_probs.size()).scatter_(1, targets.unsqueeze(1).data.cpu(), 1)
+        if self.use_gpu: targets = targets.cuda()
+        targets = (1 - self.epsilon) * targets + self.epsilon / self.num_classes
+        loss = (- targets * log_probs).mean(0).sum()
+        return loss
 
 
 class CircleLoss(nn.Module):
