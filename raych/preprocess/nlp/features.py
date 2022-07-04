@@ -253,9 +253,9 @@ def custom_embedding_features(data, label_embedding, model_name='w2v'):
     # 每一行表示一个标签的embedding
     # 计算label embedding 具体参见文档
     data[model_name + '_label_mean'] = data[model_name].progress_apply(
-        lambda x: Find_Label_embedding(x, label_embedding, method='mean'))
+        lambda x: joint_label_embedding(x, label_embedding, method='mean'))
     data[model_name + '_label_max'] = data[model_name].progress_apply(
-        lambda x: Find_Label_embedding(x, label_embedding, method='max'))
+        lambda x: joint_label_embedding(x, label_embedding, method='max'))
 
     print('generate embedding max/mean')
     # 将embedding 进行max, mean聚合
@@ -267,21 +267,21 @@ def custom_embedding_features(data, label_embedding, model_name='w2v'):
     print('generate embedding window max/mean')
     # 滑窗处理embedding 然后聚合
     data[model_name + '_win_2_mean'] = data[model_name].progress_apply(
-        lambda x: Find_embedding_with_windows(x, 2, method='mean'))
+        lambda x: embedding_within_windows(x, 2, method='mean'))
     data[model_name + '_win_3_mean'] = data[model_name].progress_apply(
-        lambda x: Find_embedding_with_windows(x, 3, method='mean'))
+        lambda x: embedding_within_windows(x, 3, method='mean'))
     data[model_name + '_win_4_mean'] = data[model_name].progress_apply(
-        lambda x: Find_embedding_with_windows(x, 4, method='mean'))
+        lambda x: embedding_within_windows(x, 4, method='mean'))
     data[model_name + '_win_2_max'] = data[model_name].progress_apply(
-        lambda x: Find_embedding_with_windows(x, 2, method='max'))
+        lambda x: embedding_within_windows(x, 2, method='max'))
     data[model_name + '_win_3_max'] = data[model_name].progress_apply(
-        lambda x: Find_embedding_with_windows(x, 3, method='max'))
+        lambda x: embedding_within_windows(x, 3, method='max'))
     data[model_name + '_win_4_max'] = data[model_name].progress_apply(
-        lambda x: Find_embedding_with_windows(x, 4, method='max'))
+        lambda x: embedding_within_windows(x, 4, method='max'))
     return data
 
 
-def Find_embedding_with_windows(embedding_matrix, window_size=2, method='mean'):
+def embedding_within_windows(embedding_matrix, window_size=2, method='mean'):
     '''
     划窗聚合 word embeddings
     '''
@@ -302,7 +302,7 @@ def softmax(x):
     return np.exp(x) / np.exp(x).sum(axis=-1)
 
 
-def Find_Label_embedding(example_matrix, label_embedding, method='mean'):
+def joint_label_embedding(example_matrix, label_embedding, method='mean'):
     '''
     论文《Joint embedding of words and labels for Text Classification》获取标签空间的词嵌入, numpy for feature generation.
     inputs:
@@ -316,8 +316,8 @@ def Find_Label_embedding(example_matrix, label_embedding, method='mean'):
     similarity_matrix = np.dot(example_matrix, label_embedding.T) / (np.linalg.norm(example_matrix) * np.linalg.norm(label_embedding))
 
     # “类别-词语”的注意力机制
-    attention = similarity_matrix.max(axis=0)
-    # attention = similarity_matrix.mean(axis=0)
+    attention = similarity_matrix.max(axis=1)
+    # attention = similarity_matrix.mean(axis=1)
     attention = softmax(attention)
     # 将样本的词嵌入与注意力机制相乘得到
     attention_embedding = example_matrix * attention
