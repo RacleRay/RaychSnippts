@@ -20,6 +20,14 @@ def show_runtime(func):
     return _deco
 
 
+def hms_string(sec_elapsed):
+    "数字时钟化显示时间消耗：0:00:10.01"
+    h = int(sec_elapsed / (60 * 60))
+    m = int((sec_elapsed % (60 * 60)) / 60)
+    s = sec_elapsed % 60
+    return "{}:{:>02}:{:>05.2f}".format(h, m, s)
+
+
 def get_machine_info():
     info = "\n >> Python  Version  : {:}".format(
         sys.version.replace('\n', ' '))
