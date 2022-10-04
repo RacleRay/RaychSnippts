@@ -33,7 +33,7 @@ def extract_tar(archive_file, target_dir=None, delete=False):
                     if not is_within_directory(path, member_path):
                         raise Exception("Attempted Path Traversal in Tar File")
             
-                tar.extractall(path, members, numeric_owner) 
+                tar.extractall(path, members, numeric_owner=numeric_owner) 
                 
             
             safe_extract(f, target_dir)
